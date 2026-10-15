@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="az">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AuraKey</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<style>
+:root{--bg:#eaf0f3;--card:#f9fbfc;--ink:#1c2a35;--mute:#5d6f7c;--line:#cfdbe2;--acc:#3b6f8f;--danger:#a63d3d;--h:200}
+@media (prefers-color-scheme:dark){:root{--bg:#111b24;--card:#182530;--ink:#e4edf2;--mute:#8fa4b2;--line:#2a3b48;--acc:#7fb6d6;--danger:#e58383}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:620px;margin:0 auto;padding:28px 16px 72px}
+header{display:flex;align-items:center;gap:16px;margin-bottom:24px}
+.orb{width:64px;height:64px;border-radius:50%;flex:none;background:radial-gradient(circle at 35% 30%,hsl(var(--h) 80% 82%),hsl(var(--h) 60% 55%) 60%,hsl(var(--h) 55% 35%));box-shadow:0 0 28px 6px hsl(var(--h) 70% 60% / .45)}
+@media (prefers-reduced-motion:no-preference){.orb{transition:background .6s,box-shadow .6s}}
+h1{font:600 2rem/1.1 "Palatino Linotype",Palatino,Georgia,serif;margin:0;letter-spacing:.01em}
+h2{font:600 1.2rem "Palatino Linotype",Palatino,Georgia,serif;margin:0 0 10px}
+p.sub{color:var(--mute);margin:4px 0 0}
+section{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;margin-bottom:16px}
+label{display:block;font-size:.95rem;margin-bottom:4px}
+input,textarea,button{font:inherit;color:inherit}
+input[type=email],input[type=password],textarea{width:100%;padding:11px;border:1px solid var(--line);border-radius:10px;background:transparent;margin-bottom:12px}
+input[type=range]{width:100%;accent-color:var(--acc);margin-bottom:12px}
+input[type=file]{display:none}
+button,.btn{display:inline-block;padding:9px 16px;border-radius:10px;border:1px solid var(--acc);background:var(--acc);color:#fff;cursor:pointer;margin:0 8px 8px 0;font-size:.95rem}
+@media (prefers-color-scheme:dark){button,.btn{color:#0e1a22}}
+button.ghost,.btn.ghost{background:transparent;color:var(--acc)}
+button:focus-visible,input:focus-visible,textarea:focus-visible,.btn:focus-within{outline:3px solid var(--acc);outline-offset:2px}
+.msg{min-height:1.4em;color:var(--danger);margin-top:4px}.msg.ok{color:var(--acc)}
+.entry{border-top:1px solid var(--line);padding:14px 0}
+.entry small{color:var(--mute)}.entry p{margin:6px 0;white-space:pre-wrap}
+.entry img{max-width:100%;border-radius:10px;margin:6px 0;display:block}
+.entry audio{width:100%;margin:6px 0}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div class="orb" id="orb" aria-hidden="true"></div>
+  <div><h1>AuraKey</h1><p class="sub">Düşüncələriniz yalnız sizindir. Brauzerdə şifrələnir, server yalnız şifrəli data görür.</p></div>
+</header>
+
+<section id="auth">
+  <h2>Giriş və ya qeydiyyat</h2>
+  <label for="email">E-poçt</label>
+  <input id="email" type="email" autocomplete="email">
+  <label for="password">Giriş parolu (böyük, kiçik hərf, rəqəm, simvol, ən az 8)</label>
+  <input id="password" type="password" autocomplete="current-password">
+  <button id="login">Daxil ol</button>
+  <button id="signup" class="ghost">Qeydiyyatdan keç</button>
+  <div id="authMsg" class="msg" role="alert"></div>
+</section>
+
+<section id="unlock" class="hidden">
+  <h2>Seyfi aç</h2>
+  <p class="sub">Şifrələmə parolu giriş parolundan fərqli olsun. Bu parol itərsə, qeydlər bərpa olunmur.</p>
+  <label for="vaultPass" style="margin-top:12px">Şifrələmə parolu</label>
+  <input id="vaultPass" type="password" autocomplete="off">
+  <button id="unlockBtn">Aç</button>
+  <button id="logout1" class="ghost">Çıxış</button>
+  <div id="unlockMsg" class="msg" role="alert"></div>
+</section>
+
+<section id="app" class="hidden">
+  <h2>Bu gün necəsiniz?</h2>
+  <label for="mood">Əhval balı: <strong id="moodVal">5</strong> / 10</label>
+  <input id="mood" type="range" min="1" max="10" value="5">
+  <label for="note">Qeyd</label>
+  <textarea id="note" rows="4"></textarea>
+  <label class="btn ghost">Foto seç<input id="photo" type="file" accept="image/*"></label>
+  <button id="rec" class="ghost" type="button">Səs yaz</button>
+  <div id="mediaInfo" class="sub"></div>
+  <div style="margin-top:12px">
+    <button id="save">Şifrələ və saxla</button>
+    <button id="logout2" class="ghost">Çıxış</button>
+  </div>
+  <div id="appMsg" class="msg" role="alert"></div>
+</section>
+
+<section id="listSec" class="hidden">
+  <h2>Qeydləriniz</h2>
+  <div id="list"></div>
+</section>
+</main>
+
+<script>
+// Supabase layihənizin məlumatlarını yazın (anon açar ictimaidir, RLS qoruyur)
+const SUPABASE_URL = "https://xxirmbvjrphcmnrxzilv.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_zOS5XE-hOg1VMi20qonTnQ_vukNHTuW";
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const $ = id => document.getElementById(id);
+const te = new TextEncoder(), td = new TextDecoder();
+const MAX_BYTES = 5 * 1024 * 1024;
+let key = null, user = null, mediaBlob = null, mediaType = null, recorder = null, chunks = [];
+
+const b64 = buf => btoa(String.fromCharCode(...new Uint8Array(buf)));
+const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+
+// PBKDF2 (600 000 iterasiya, SHA-256) -> AES-256-GCM açarı (crypto_utils.py ilə eyni parametrlər)
+async function deriveKey(pass, uid){
+  const base = await crypto.subtle.importKey("raw", te.encode(pass), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey(
+    {name:"PBKDF2", salt: te.encode("mindvault:" + uid), iterations: 600000, hash: "SHA-256"},
+    base, {name:"AES-GCM", length:256}, false, ["encrypt","decrypt"]);
+}
+async function encryptBytes(bytes){
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({name:"AES-GCM", iv}, key, bytes);
+  return {iv, ct};
+}
+async function decryptText(row){
+  try{
+    const pt = await crypto.subtle.decrypt({name:"AES-GCM", iv: unb64(row.iv)}, key, unb64(row.ciphertext));
+    return td.decode(pt);
+  }catch{ return null; }
+}
+
+function show(ids){ ["auth","unlock","app","listSec"].forEach(s => $(s).classList.add("hidden")); ids.forEach(s => $(s).classList.remove("hidden")); }
+function msg(id, text, ok){ const e = $(id); e.textContent = text; e.className = "msg" + (ok ? " ok" : ""); }
+function setAura(v){ document.documentElement.style.setProperty("--h", 250 - (v - 1) * 12); }
+
+async function afterLogin(u){ user = u; show(["unlock"]); }
+
+$("login").onclick = async () => {
+  const {data, error} = await sb.auth.signInWithPassword({email: $("email").value.trim(), password: $("password").value});
+  if(error) return msg("authMsg", "E-poçt və ya parol səhvdir.");
+  $("password").value = ""; afterLogin(data.user);
+};
+$("signup").onclick = async () => {
+  const {data, error} = await sb.auth.signUp({email: $("email").value.trim(), password: $("password").value});
+  if(error) return msg("authMsg", error.message);
+  if(data.session){ $("password").value = ""; afterLogin(data.user); }
+  else msg("authMsg", "Qeydiyyat uğurludur. E-poçtunuzu təsdiqləyin, sonra daxil olun.", true);
+};
+$("unlockBtn").onclick = async () => {
+  const p = $("vaultPass").value;
+  if(p.length < 8) return msg("unlockMsg", "Şifrələmə parolu ən az 8 simvol olmalıdır.");
+  key = await deriveKey(p, user.id); $("vaultPass").value = "";
+  if(await load()){ msg("unlockMsg", ""); show(["app","listSec"]); }
+  else msg("unlockMsg", "Şifrələmə parolu səhvdir.");
+};
+async function logout(){ await sb.auth.signOut(); key = null; user = null; mediaBlob = null; $("list").textContent = ""; show(["auth"]); }
+$("logout1").onclick = logout; $("logout2").onclick = logout;
+$("mood").oninput = e => { $("moodVal").textContent = e.target.value; setAura(+e.target.value); };
+setAura(5);
+
+$("photo").onchange = e => {
+  const f = e.target.files[0]; if(!f) return;
+  if(f.size > MAX_BYTES){ e.target.value = ""; return msg("appMsg", "Foto 5 MB-dan böyük ola bilməz."); }
+  mediaBlob = f; mediaType = f.type; $("mediaInfo").textContent = "Foto seçildi: " + f.name; msg("appMsg", "");
+};
+$("rec").onclick = async () => {
+  if(recorder && recorder.state === "recording"){ recorder.stop(); return; }
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+    recorder = new MediaRecorder(stream); chunks = [];
+    recorder.ondataavailable = e => chunks.push(e.data);
+    recorder.onstop = () => {
+      stream.getTracks().forEach(t => t.stop());
+      mediaBlob = new Blob(chunks, {type: recorder.mimeType}); mediaType = recorder.mimeType;
+      $("mediaInfo").textContent = "Səs yazısı hazırdır."; $("rec").textContent = "Səs yaz";
+    };
+    recorder.start(); $("rec").textContent = "Dayandır";
+  }catch{ msg("appMsg", "Mikrofona icazə verilmədi."); }
+};
+
+$("save").onclick = async () => {
+  const note = $("note").value.trim();
+  if(!note && !mediaBlob) return msg("appMsg", "Qeyd yazın, foto seçin və ya səs yazın.");
+  let path = null, miv = null, mtype = null;
+  if(mediaBlob){
+    if(mediaBlob.size > MAX_BYTES) return msg("appMsg", "Fayl 5 MB-dan böyükdür.");
+    const {iv, ct} = await encryptBytes(await mediaBlob.arrayBuffer());
+    path = user.id + "/" + crypto.randomUUID() + ".bin";
+    const up = await sb.storage.from("media").upload(path, new Blob([ct]), {contentType:"application/octet-stream"});
+    if(up.error) return msg("appMsg", "Fayl yüklənmədi: " + up.error.message);
+    miv = b64(iv); mtype = mediaType;
+  }
+  const enc = await encryptBytes(te.encode(note));
+  const {error} = await sb.from("entries").insert({mood: +$("mood").value, iv: b64(enc.iv), ciphertext: b64(enc.ct), media_path: path, media_iv: miv, media_type: mtype});
+  if(error) return msg("appMsg", "Saxlamaq alınmadı: " + error.message);
+  $("note").value = ""; $("photo").value = ""; mediaBlob = null; $("mediaInfo").textContent = "";
+  msg("appMsg", "Şifrələnib saxlandı.", true); load();
+};
+
+// Şifrəli faylı signed URL ilə (60 san) endirir, brauzerdə açır
+async function showMedia(row, holder){
+  const {data, error} = await sb.storage.from("media").createSignedUrl(row.media_path, 60);
+  if(error) return;
+  try{
+    const buf = await (await fetch(data.signedUrl)).arrayBuffer();
+    const pt = await crypto.subtle.decrypt({name:"AES-GCM", iv: unb64(row.media_iv)}, key, buf);
+    const url = URL.createObjectURL(new Blob([pt], {type: row.media_type}));
+    const isImg = row.media_type.startsWith("image");
+    const el = document.createElement(isImg ? "img" : "audio");
+    el.src = url; if(isImg) el.alt = "Şifrəsi açılmış foto"; else el.controls = true;
+    holder.append(el);
+  }catch{ holder.append("(fayl açılmadı)"); }
+}
+
+// Qeydləri yükləyir; ilk qeyd açılmırsa şifrələmə parolu səhvdir
+async function load(){
+  const {data, error} = await sb.from("entries").select("*").order("created_at", {ascending:false});
+  if(error){ msg("appMsg", error.message); return false; }
+  const box = $("list"); box.textContent = "";
+  if(!data.length){ box.textContent = "Hələ qeyd yoxdur. İlk qeydinizi yazın."; return true; }
+  let first = true;
+  for(const row of data){
+    const text = await decryptText(row);
+    if(first && text === null) return false;
+    first = false;
+    const d = document.createElement("div"); d.className = "entry";
+    const s = document.createElement("small");
+    s.textContent = new Date(row.created_at).toLocaleString("az") + " | bal: " + row.mood + "/10";
+    const p = document.createElement("p"); p.textContent = text === null ? "(açılmadı)" : text;
+    const b = document.createElement("button"); b.className = "ghost"; b.textContent = "Sil";
+    b.onclick = async () => {
+      if(row.media_path) await sb.storage.from("media").remove([row.media_path]);
+      await sb.from("entries").delete().eq("id", row.id); load();
+    };
+    d.append(s, p);
+    if(row.media_path) await showMedia(row, d);
+    d.append(b); box.append(d);
+  }
+  return true;
+}
+
+sb.auth.getSession().then(({data}) => { if(data.session) afterLogin(data.session.user); });
+</script>
+</body>
+</html>
